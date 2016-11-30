@@ -6,34 +6,48 @@ import (
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/pcap"
+	"sync"
 )
 
 func main() {
-	if handle, err := pcap.OpenLive("en1", 1600, true, pcap.BlockForever); err != nil {
+	var wg sync.WaitGroup
+	devices := getDeviceNames()
+
+	for _, device := range devices {
+		wg.Add(1)
+		go captureDevice(wg, device)
+	}
+	wg.Wait()
+}
+
+func captureDevice(wg sync.WaitGroup, device string) {
+	defer wg.Done()
+	if handle, err := pcap.OpenLive(device, 1600, true, pcap.BlockForever); err != nil {
+		fmt.Print(device + " ")
 		panic(err)
 	} else if err := handle.SetBPFFilter("arp"); err != nil {
-		// optional
-		panic(err)
+		fmt.Println(device + " error on setting filter")
+		return
 	} else {
 		packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 		for packet := range packetSource.Packets() {
-			handlePacket(packet) // Do something with a packet here.
+			handlePacket(device, packet) // Do something with a packet here.
 		}
 	}
 }
 
 func getDeviceNames() ([]string) {
-	result := make([]string, 5)
+	var result []string
 
 	interfaces, _ := net.Interfaces()
 	for _, iface := range interfaces {
-		append(result, iface.Name)
+		result = append(result, iface.Name)
 	}
-	
-	return result
+
+	return result[:len(interfaces)]
 }
 
-func handlePacket(packet gopacket.Packet) {
+func handlePacket(device string, packet gopacket.Packet) {
 	// if packet.LinkLayer().
-	fmt.Println("Packet received", packet.Dump())
+	fmt.Println("Packet received", device, packet.Dump())
 }
